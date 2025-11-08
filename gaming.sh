@@ -1,14 +1,14 @@
 #!/bin/bash
 # =============================================
-#  Gaming Thetering Script 
-#  Autor: Adrian RM
-#  Incluye:
+#  Gaming Tethering Script 
+#  Author: Adrian RM
+#  Includes:
 #   - USB autosuspend fix
 #   - TCP keepalive tuning
 #   - fq_codel + BBR
 #   - Power tuning + CPU performance
-#   - Chrome/Edge prioridad realtime
-#   - Keepalive + Heartbeat + Watchdog con logging
+#   - Chrome/Edge realtime priority
+#   - Keepalive + Heartbeat + Watchdog with logging
 # =============================================
 
 IFACE=$(ip -o addr show | awk '/inet / && ($4 ~ /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./) {print $2; exit}')
@@ -23,15 +23,15 @@ HEARTBEAT_PID_FILE="/tmp/gaming_heartbeat.pid"
 WATCHDOG_LOG="/tmp/gaming_watchdog.log"
 
 if [ -z "$IFACE" ]; then
-    echo "[✖] No se detectó interfaz de red privada (tethering)."
+    echo "[✖] No private network interface detected (tethering)."
     exit 1
 fi
 
 # -----------------------------
-# Keepalive TCP (refresco ligero)
+# TCP Keepalive (light refresh)
 # -----------------------------
 start_keepalive() {
-    echo "[+] Iniciando keepalive TCP..."
+    echo "[+] Starting TCP keepalive..."
     nohup bash -c "while true; do nc -z -w1 1.1.1.1 443 >/dev/null 2>&1; sleep 5; done" &
     echo $! > "$KEEPALIVE_PID_FILE"
 }
@@ -39,15 +39,15 @@ stop_keepalive() {
     if [ -f "$KEEPALIVE_PID_FILE" ]; then
         kill "$(cat "$KEEPALIVE_PID_FILE")" 2>/dev/null
         rm -f "$KEEPALIVE_PID_FILE"
-        echo "[✔] Keepalive detenido."
+        echo "[✔] Keepalive stopped."
     fi
 }
 
 # -----------------------------
-# Heartbeat UDP (anti-CGNAT)
+# UDP Heartbeat (anti-CGNAT)
 # -----------------------------
 start_heartbeat() {
-    echo "[+] Iniciando UDP heartbeat..."
+    echo "[+] Starting UDP heartbeat..."
     nohup bash -c "while true; do echo -n > /dev/udp/1.1.1.1/443; sleep 3; done" &
     echo $! > "$HEARTBEAT_PID_FILE"
 }
@@ -55,26 +55,26 @@ stop_heartbeat() {
     if [ -f "$HEARTBEAT_PID_FILE" ]; then
         kill "$(cat "$HEARTBEAT_PID_FILE")" 2>/dev/null
         rm -f "$HEARTBEAT_PID_FILE"
-        echo "[✔] Heartbeat detenido."
+        echo "[✔] Heartbeat stopped."
     fi
 }
 
 # -----------------------------
-# Watchdog (reinicia interfaz si pierde tráfico)
+# Watchdog (restarts interface if traffic loss detected)
 # -----------------------------
 start_watchdog() {
-    echo "[+] Iniciando watchdog con logging..."
-    echo "[LOG] === Inicio watchdog: $(date) ===" > "$WATCHDOG_LOG"
+    echo "[+] Starting watchdog with logging..."
+    echo "[LOG] === Watchdog start: $(date) ===" > "$WATCHDOG_LOG"
     nohup bash -c "
     TARGET='1.1.1.1'
     while true; do
         if ! ping -c1 -W3 \$TARGET >/dev/null 2>&1; then
             TS=\$(date '+%Y-%m-%d %H:%M:%S')
-            echo \"[\$TS] ⚠ Pérdida detectada, reiniciando $IFACE...\" >> $WATCHDOG_LOG
+            echo \"[\$TS] ⚠ Connection loss detected, restarting $IFACE...\" >> $WATCHDOG_LOG
             sudo ip link set $IFACE down
             sleep 1
             sudo ip link set $IFACE up
-            echo \"[\$TS] ✅ Interfaz $IFACE reiniciada correctamente.\" >> $WATCHDOG_LOG
+            echo \"[\$TS] ✅ Interface $IFACE successfully restarted.\" >> $WATCHDOG_LOG
         fi
         sleep 2
     done
@@ -85,15 +85,15 @@ stop_watchdog() {
     if [ -f "$WATCHDOG_PID_FILE" ]; then
         kill "$(cat "$WATCHDOG_PID_FILE")" 2>/dev/null
         rm -f "$WATCHDOG_PID_FILE"
-        echo "[✔] Watchdog detenido. Log disponible en $WATCHDOG_LOG"
+        echo "[✔] Watchdog stopped. Log available at $WATCHDOG_LOG"
     fi
 }
 
 # -----------------------------
-# Activar modo gaming
+# Enable gaming mode
 # -----------------------------
 enable_gaming_mode() {
-    echo "[⚙] Activando Modo Gaming en $IFACE..."
+    echo "[⚙] Enabling Gaming Mode on $IFACE..."
 
     # --- Kernel tweaks ---
     sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
@@ -119,39 +119,39 @@ enable_gaming_mode() {
         sudo cpupower frequency-set -g performance
     fi
 
-    # --- MTU y fq_codel ---
+    # --- MTU and fq_codel ---
     sudo ip link set dev "$IFACE" mtu 1500
     sudo tc qdisc replace dev "$IFACE" root fq_codel target 5ms interval 100ms
 
     # --- DNS Cloudflare ---
     if [ -f "$DNS_FILE" ] && [ ! -f "${DNS_FILE}.bak_gaming" ]; then
-        echo "[→] Creando respaldo de DNS actual..."
+        echo "[→] Creating DNS backup..."
         sudo cp "$DNS_FILE" "${DNS_FILE}.bak_gaming"
     fi
-    echo "[→] Estableciendo DNS de Cloudflare (1.1.1.1 / 1.0.0.1)..."
+    echo "[→] Setting Cloudflare DNS (1.1.1.1 / 1.0.0.1)..."
     echo -e "nameserver 1.1.1.1\nnameserver 1.0.0.1" | sudo tee "$DNS_FILE" >/dev/null
 
-    # --- Servicios innecesarios ---
+    # --- Unnecessary services ---
     sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer 2>/dev/null
     sudo systemctl stop systemd-resolved 2>/dev/null
 
-    # --- Autosuspend USB ---
+    # --- USB autosuspend ---
     echo -1 | sudo tee /sys/module/usbcore/parameters/autosuspend >/dev/null
     echo "options usbcore autosuspend=-1" | sudo tee /etc/modprobe.d/usb-autosuspend.conf >/dev/null
     for i in /sys/bus/usb/devices/*/power/control; do echo on | sudo tee $i >/dev/null; done
 
-    # --- Prioridad navegador ---
+    # --- Browser priority ---
     PID_TARGET=${EDGE_PID:-$CHROME_PID}
     if [ -n "$PID_TARGET" ]; then
-        echo "[+] Aumentando prioridad de navegador (PID $PID_TARGET)..."
+        echo "[+] Increasing browser priority (PID $PID_TARGET)..."
         sudo renice -n -20 -p "$PID_TARGET" >/dev/null
         sudo chrt -r -p 99 "$PID_TARGET" >/dev/null
         sudo taskset -cp 0,1 "$PID_TARGET" >/dev/null
     fi
 
-    # --- Edge optimizado ---
+    # --- Optimized Edge ---
     if [ -n "$EDGE_BIN" ]; then
-        echo "[→] Iniciando Microsoft Edge optimizado..."
+        echo "[→] Launching optimized Microsoft Edge..."
         nohup "$EDGE_BIN" \
             --enable-features=WebRTCPipeWireCapturer \
             --disable-renderer-backgrounding \
@@ -160,20 +160,20 @@ enable_gaming_mode() {
             --no-proxy-server >/dev/null 2>&1 &
     fi
 
-    # --- Lanzar procesos auxiliares ---
+    # --- Launch helper processes ---
     start_keepalive
     start_heartbeat
     start_watchdog
 
-    echo "[✔] Modo Gaming activado en $IFACE."
-    echo "[🕹] Keepalive + heartbeat + watchdog activos con logging."
+    echo "[✔] Gaming Mode enabled on $IFACE."
+    echo "[🕹] Keepalive + heartbeat + watchdog running with logging."
 }
 
 # -----------------------------
-# Desactivar modo gaming
+# Disable gaming mode
 # -----------------------------
 disable_gaming_mode() {
-    echo "[⏹] Desactivando Modo Gaming ..."
+    echo "[⏹] Disabling Gaming Mode..."
 
     stop_keepalive
     stop_heartbeat
@@ -182,12 +182,12 @@ disable_gaming_mode() {
     sudo tc qdisc del dev "$IFACE" root 2>/dev/null
     sudo ip link set dev "$IFACE" mtu 1500
 
-    # --- Restaurar DNS original ---
+    # --- Restore original DNS ---
     if [ -f "${DNS_FILE}.bak_gaming" ]; then
         sudo mv "${DNS_FILE}.bak_gaming" "$DNS_FILE"
-        echo "[✔] DNS restaurado al estado original."
+        echo "[✔] DNS restored to original state."
     else
-        echo "[!] No se encontró respaldo de DNS previo. (posiblemente ya restaurado o eliminado)"
+        echo "[!] No previous DNS backup found (possibly already restored or deleted)."
     fi
 
     sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
@@ -200,17 +200,17 @@ disable_gaming_mode() {
     sudo systemctl start systemd-resolved 2>/dev/null
     sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null
 
-    echo "[✔] Sistema restaurado. Logs del watchdog: $WATCHDOG_LOG"
+    echo "[✔] System restored. Watchdog logs: $WATCHDOG_LOG"
 }
 
 # -----------------------------
-# Control principal
+# Main control
 # -----------------------------
 case "$1" in
     on)  enable_gaming_mode ;;
     off) disable_gaming_mode ;;
     *)
-        echo "Uso: sudo gaming.sh on|off"
+        echo "Usage: sudo gaming.sh on|off"
         exit 1
         ;;
 esac
